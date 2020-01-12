@@ -10,6 +10,8 @@ import capstone.x86_const
 import lief
 import sys
 import argparse
+import tempfile
+import os
 
 def error(msg):
     sys.stderr.write(msg + "\n")
@@ -24,7 +26,8 @@ def main():
     
     parser = argparse.ArgumentParser(description=info)
     parser.add_argument('binary', help='Input file (32-bit movfuscated binary)')
-    parser.add_argument('-o', '--output', help='Output file (dot)', default='graph.dot')
+    parser.add_argument('-o', '--output', help='Output file (png)', default='graph.png')
+    parser.add_argument('--verbose', '-v', action='count', default=0)
 
     args = parser.parse_args()
 
@@ -56,6 +59,9 @@ def main():
         STACK_TEMP = elf.get_symbol('stack_temp').value
     except:
         error("Sorry only non-stripped Movfuscated Binaries are supported!")
+
+    if args.verbose:
+        print("[*] entrypoint: %08x" % elf.entrypoint)
 
     off = elf.entrypoint-entry.virtual_address
     raw_data = bytes(entry.content[off:])
@@ -105,14 +111,20 @@ def main():
                         g['%08x' % current] = []
 
 
+    print("[*] Writing dot file ...")
     dot = ['digraph cfg {']
     keys = sorted((int(i, 16) for i in g.keys()))
+    if args.verbose:
+        for i in keys:
+            k = '%08x' % i
+            print(k, " - ", g[k])
 
     main = int(g['%08x' % elf.entrypoint][0], 16)
     dot.append('entry -> _%08x;' % main)
     last = main
-    keys = [i for i in keys if i > main]
+    keys = [i for i in keys if i >= main]
     nodes = {'entry', '_%08x' % main}
+    k = '%08x' % main
     for i in keys:
         k = '%08x' % i
         for child in g[k]:
@@ -128,7 +140,8 @@ def main():
             i = '_%08x' % i
         nodes.add('_%08x' % last)
         nodes.add(i)
-        dot.append('_%08x -> %s;' % (last, i))
+        if old > last:
+            dot.append('_%08x -> %s;' % (last, i))
         last = old
 
     for node in nodes:
@@ -138,9 +151,25 @@ def main():
         dot.append('%s [shape="box", label="%s"];' % (node, label))
 
     dot.append('}')
-
-    with open(args.output, "w") as handle:
+    cmd = []
+    for i in dot[1:-1]:
+        if i not in cmd:
+            cmd.append(i)
+    
+    dot = [dot[0]] + cmd + [dot[-1]]
+    _, temp = tempfile.mkstemp()
+    with open(temp, "w") as handle:
         handle.write("\n".join(dot))
+
+    #if args.verbose:
+    print("[*] Converting dot file to png ...", end=' ')
+
+    if os.system("dot -Tpng %s > %s" % (temp, args.output)) == 0:
+        print("Done!")
+    else:
+        print("!! FAILED !!")
+
+    os.remove(temp)
 
 if __name__ == '__main__':
     main()
