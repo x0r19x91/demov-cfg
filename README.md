@@ -3,5 +3,5 @@ Generate Basic CFG for main() in a movfuscated binary
 
 ## Required Libraries
 
-  lief
-  capstone
+  1. [lief](https://github.com/lief-project/LIEF)
+  2. [capstone](http://www.capstone-engine.org/)
